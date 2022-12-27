@@ -1,0 +1,78 @@
+default_stages: [commit]
+default_language_version:
+  python: python3.9
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+  - repo: https://github.com/asottile/seed-isort-config
+    rev: v2.2.0
+    hooks:
+      - id: seed-isort-config
+        name: Seed import sort config
+        args:
+          [
+            "--application-directories",
+            "src/daidalos/",
+          ]
+  - repo: https://github.com/timothycrosley/isort
+    rev: 5.9.3
+    hooks:
+      - id: isort
+        name: Sort python imports
+        "types": [python]
+        additional_dependencies:
+          - toml
+  - repo: https://github.com/ambv/black
+    rev: 22.3.0
+    hooks:
+      - id: black
+        name: Black
+  - repo: https://gitlab.com/pycqa/flake8
+    rev: 3.9.2
+    hooks:
+      - id: flake8
+        name: Flake8
+        args: ["--config=tox.ini"]
+        files: '^src/.*\.py'
+        additional_dependencies: [flake8-eradicate, flake8-bugbear, pep8-naming]
+  - repo: https://github.com/prettier/pre-commit
+    rev: 57f39166b5a5a504d6808b87ab98d41ebf095b46
+    hooks:
+      - id: prettier
+        name: Prettier
+        files: "\\.(\
+          css|less|scss\
+          |graphql|gql\
+          |html\
+          |js|jsx\
+          |json\
+          |md|markdown|mdown|mkdn\
+          |mdx\
+          |ts|tsx\
+          |vue\
+          )$"
+  - repo: local
+    hooks:
+      - id: prototool-lint
+        name: Lint proto files
+        description: Use prototool to lint protobuf files
+        entry: cicd/prototool-format.py lint
+        files: \.proto$
+        types: [file]
+        language: python
+      - id: prototool-format
+        name: Format proto files
+        description: Use prototool to format protobuf files
+        entry: cicd/prototool-format.py format
+        files: \.proto$
+        types: [file]
+        language: python
+  - repo: https://github.com/purcell/sqlint
+    rev: 0.2.0
+    hooks:
+      - id: sqlint
+        name: SQL linting
