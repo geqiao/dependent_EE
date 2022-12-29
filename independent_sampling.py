@@ -3,13 +3,24 @@ import itertools
 import numpy as np
 import pandas as pd
 import scipy.spatial.distance as sdis
+import scipy.stats.qmc as qmc
 
 
 def n_choose_k(A, num):
     return np.array(tuple(itertools.combinations(A, num)))
 
 
-def trajectory(p: int, r: int, M: int, parameter_range_csv_file: str) -> pd.DataFrame:
+def ind_sample_from_quasi_OT(
+    p: int, r: int, M: int, parameter_range_csv_file: str
+) -> pd.DataFrame:
+    """
+    Independent samples based on quasi-OT design
+    :param p:
+    :param r:
+    :param M:
+    :param parameter_range_csv_file:
+    :return:
+    """
     data = pd.read_csv(parameter_range_csv_file, index_col=0, header=0)
     parameter_names = data["Parameter"]
     k = data.shape[0]
@@ -95,4 +106,33 @@ def trajectory(p: int, r: int, M: int, parameter_range_csv_file: str) -> pd.Data
 
     t = pd.DataFrame(np.concatenate(parameter_set), columns=parameter_names)
 
+    return t
+
+
+def ind_sample_from_radical_design(
+    r: int, parameter_range_csv_file: str
+) -> pd.DataFrame:
+    data = pd.read_csv(parameter_range_csv_file, index_col=0, header=0)
+    parameter_names = data["Parameter"]
+    k = len(data)
+    SobolNumber = qmc.Sobol(4 * k, scramble=False).random(r + 5)[1:, :]
+
+    def radical_design(MatIn: np.ndarray) -> np.ndarray:
+        rr, cc = MatIn.shape
+        MatOut = np.array([])
+        for i in range(rr - 4):
+            firstRow = MatIn[i, : MatIn.shape[1] // 2]
+            tempM = np.tile(firstRow, [1 + cc // 2, 1])
+            for j in range(1, cc // 2 + 1):
+                tempM[j, j - 1] = MatIn[i + 4, cc // 2 + j - 1]
+            if len(MatOut) == 0:
+                MatOut = tempM
+            else:
+                MatOut = np.concatenate((MatOut, tempM))
+        return MatOut
+
+    Z_UNIF = radical_design(
+        np.concatenate((SobolNumber[:, :k], SobolNumber[:, -k:]), axis=1)
+    )
+    t = pd.DataFrame(Z_UNIF, columns=parameter_names)
     return t
