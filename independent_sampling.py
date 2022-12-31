@@ -6,25 +6,47 @@ import scipy.spatial.distance as sdis
 import scipy.stats.qmc as qmc
 
 
-def n_choose_k(A, num):
-    return np.array(tuple(itertools.combinations(A, num)))
+def generate_combinations(V: np.ndarray, k: int) -> np.ndarray:
+    """
+    Generate all combinations contain k elements from a
+    series of N elements
+    :param V: a 1D vector with N elements
+    :param k: number of elements contained in each sub vector
+    :return: a 2D array in which each row is a k-element sub vector of V
+    """
+    return np.array(tuple(itertools.combinations(V, k)))
 
 
 def ind_sample_from_quasi_OT(
-    p: int, r: int, M: int, parameter_range_csv_file: str
+    p: int, r: int, M: int, input_file_path: str
 ) -> pd.DataFrame:
     """
-    Independent samples based on quasi-OT design
-    :param p:
-    :param r:
-    :param M:
-    :param parameter_range_csv_file:
-    :return:
+    Independent samples based on quasi-optimized trajectory design.
+    A trajectory design is something like:
+        x1,         x2,         x3
+        a           b           c
+        a+delta     b           c
+        a+delta     b+delta     c
+        a+delta     b+delta     c-delta
+    :param p: number of levels from the min to max of the input.
+              e.g. p= 4, the input range is divided as 0, 1/3,
+              2/3 and 1
+    :param r: number of quasi-optimized trajectories
+    :param M: number of randomly generated trajectories in the input space
+    :param input_file_path: path to the input csv file. The file should have
+                            four columns: Nr., Parameter, Min, and Max. e.g:
+                            Nr.      Parameter        Min           Max
+                            1        x1               0             1
+                            2        x2               2             3
+                            ...
+
+    :return: a dataframe contains r quasi-OT, the shape is (k+1) * r
+             where k is the number of parameters
     """
-    data = pd.read_csv(parameter_range_csv_file, index_col=0, header=0)
+    data = pd.read_csv(input_file_path, index_col=0, header=0)
     parameter_names = data["Parameter"]
-    k = data.shape[0]
-    datamatrix_diff = (data["Max"] - data["Min"]).values
+    k = len(data)
+    input_range = (data["Max"] - data["Min"]).values
     B = np.append(np.zeros([1, k]), np.tril(np.ones([k, k])), axis=0)
     delta = p / (2 * (p - 1))
     J_1 = np.ones([k + 1, k])
@@ -44,6 +66,12 @@ def ind_sample_from_quasi_OT(
         )
 
         if k > 10:
+            # when k is large (e.g. > 100), it is very likely the randomly generated
+            # trajectory contains invalid point (i.e. has value outside the range [0,1])
+            # and hence the trajectory will be discarded. The following code is used
+            # to fine tune the invalid trajectory into valid one so to reduce the
+            # time to generate valid random trajectories
+
             for cp in np.nditer(np.arange(p / 2)):
                 B_Star[B_Star == (cp - 0.5 * p) / (p - 1)] = (cp + 0.5 * p) / (p - 1)
             for cp in np.nditer(np.arange(p / 2) + p / 2):
@@ -60,22 +88,22 @@ def ind_sample_from_quasi_OT(
 
     vector = np.arange(1, M + 1)
     comb_dist = np.zeros([M, 1])
-    comb_matrix = n_choose_k(vector, M - 1)
+    comb_matrix = generate_combinations(vector, M - 1)
     discard_element = np.arange(M, 0, -1)
 
     for i in range(M, r, -1):
         if i == M:
-            r_comb_matrix = n_choose_k(vector, 2)
-            CombDist_total = 0.0
+            r_comb_matrix = generate_combinations(vector, 2)
+            total_dist = 0.0
             for index in range(np.size(r_comb_matrix, 0)):
-                CombDist_total = (
-                    CombDist_total
+                total_dist = (
+                    total_dist
                     + (dist[r_comb_matrix[index, 1] - 1, r_comb_matrix[index, 0] - 1])
                     ** 2
                 )
 
             for j in range(i):
-                comb_dist[j] = CombDist_total - np.sum(
+                comb_dist[j] = total_dist - np.sum(
                     dist[comb_matrix[j, :] - 1, discard_element[j] - 1] ** 2
                 )
         else:
@@ -93,46 +121,60 @@ def ind_sample_from_quasi_OT(
         comb_matrix = comb_matrix[comb_matrix != discard_element]
         comb_matrix = np.reshape(comb_matrix, (i - 1, i - 2))
 
-    best_comb = np.sort(vector)
-    trajectory_set = [T[i] for i in best_comb - 1]
+    quasi_optimized_combination = np.sort(vector)
+    trajectories = [T[i] for i in quasi_optimized_combination - 1]
 
-    datamatrix_diff_transver = np.tile(datamatrix_diff, (k + 1, 1))
-    data_transver = np.tile(data["Min"].values, (k + 1, 1))
+    input_ranges = np.tile(input_range, (k + 1, 1))
+    input_mins = np.tile(data["Min"].values, (k + 1, 1))
 
-    parameter_set = [
-        data_transver + trajectory * datamatrix_diff_transver
-        for trajectory in trajectory_set
-    ]
+    samples = [input_mins + trajectory * input_ranges for trajectory in trajectories]
 
-    t = pd.DataFrame(np.concatenate(parameter_set), columns=parameter_names)
+    t = pd.DataFrame(np.concatenate(samples), columns=parameter_names)
 
     return t
 
 
-def ind_sample_from_radical_design(
-    r: int, parameter_range_csv_file: str
-) -> pd.DataFrame:
-    data = pd.read_csv(parameter_range_csv_file, index_col=0, header=0)
+def ind_sample_from_radical_design(r: int, input_file_path: str) -> pd.DataFrame:
+    """
+    Independent samples based on radical design. It utilizes the Sobol
+    sequence to generate the random sample. A radical design is something
+    like:
+        x1,         x2,         x3
+        a           b           c
+        a+delta     b           c
+        a           b+delta     c
+        a           b           c-delta
+    :param r: number of radical sets
+    :param input_file_path: path to the input csv file. The file should have
+                            four columns: Nr., Parameter, Min, and Max. e.g:
+                            Nr.      Parameter        Min           Max
+                            1        x1               0             1
+                            2        x2               2             3
+                            ...
+    :return: a dataframe contains r quasi-OT, the shape is (k+1) * r
+             where k is the number of parameters
+    """
+    data = pd.read_csv(input_file_path, index_col=0, header=0)
     parameter_names = data["Parameter"]
     k = len(data)
-    SobolNumber = qmc.Sobol(4 * k, scramble=False).random(r + 5)[1:, :]
+    sobol_seq = qmc.Sobol(4 * k, scramble=False).random(r + 5)[1:, :]
 
-    def radical_design(MatIn: np.ndarray) -> np.ndarray:
-        rr, cc = MatIn.shape
-        MatOut = np.array([])
-        for i in range(rr - 4):
-            firstRow = MatIn[i, : MatIn.shape[1] // 2]
-            tempM = np.tile(firstRow, [1 + cc // 2, 1])
-            for j in range(1, cc // 2 + 1):
-                tempM[j, j - 1] = MatIn[i + 4, cc // 2 + j - 1]
-            if len(MatOut) == 0:
-                MatOut = tempM
+    def radical_design(input_mat: np.ndarray) -> np.ndarray:
+        rows, cols = input_mat.shape
+        output_mat = np.array([])
+        for i in range(rows - 4):
+            first_row = input_mat[i, : input_mat.shape[1] // 2]
+            temp_mat = np.tile(first_row, [1 + cols // 2, 1])
+            for j in range(1, cols // 2 + 1):
+                temp_mat[j, j - 1] = input_mat[i + 4, cols // 2 + j - 1]
+            if len(output_mat) == 0:
+                output_mat = temp_mat
             else:
-                MatOut = np.concatenate((MatOut, tempM))
-        return MatOut
+                output_mat = np.concatenate((output_mat, temp_mat))
+        return output_mat
 
-    Z_UNIF = radical_design(
-        np.concatenate((SobolNumber[:, :k], SobolNumber[:, -k:]), axis=1)
+    samples = radical_design(
+        np.concatenate((sobol_seq[:, :k], sobol_seq[:, -k:]), axis=1)
     )
-    t = pd.DataFrame(Z_UNIF, columns=parameter_names)
+    t = pd.DataFrame(samples, columns=parameter_names)
     return t

@@ -3,40 +3,68 @@ import pandas as pd
 import scipy as sp
 
 
-def original_dist(z, type, a, b):
-    z_origin = z
-    if type == "normal":
+def original_dist(
+    vector: np.ndarray, dist_type: str, a: np.ndarray, b: np.ndarray
+) -> np.ndarray:
+    """
+    Restore a vector from uniform distribution to its original distribution
+    :param vector: vector in uniform distribution
+    :param dist_type: type of original distribution
+    :param a: lower boundary of a uniform distribution (only needed when
+                the original distribution is uniform)
+    :param b: upper boundary of a uniform distribution (only needed when
+                the original distribution is uniform)
+    :return: a vector in original distribution
+    """
+    if dist_type == "normal":
         if np.prod(a) == 0 and np.prod(b) == 0:
-            z_origin = z
+            vector_ori = vector
         else:
-            z_cdf = sp.stats.norm.cdf(z)
+            z_cdf = sp.stats.norm.cdf(vector)
             z_cdf[z_cdf == 1] = 1 - 1e-6
             z_cdf[z_cdf == 0] = 1e-6
-            z_origin = sp.stats.norm.ppf(z_cdf)
-    elif type == "uniform":
-        z_origin = a + (b - a) * sp.stats.norm.cdf(z)
-    return z_origin
+            vector_ori = sp.stats.norm.ppf(z_cdf)
+    elif dist_type == "uniform":
+        vector_ori = a + (b - a) * sp.stats.norm.cdf(vector)
+    else:
+        raise NotImplementedError(f"Distribution {dist_type} is not implemented.")
+    return vector_ori
 
 
 def generate_dependent_sample(
     k: int,
-    data_file: str,
-    corrcoef: np.ndarray,
-    type: str,
+    ind_sample_file_path: str,
+    corr_coef: np.ndarray,
+    dist_type: str,
     a: np.ndarray,
     b: np.ndarray,
     design: str = "quasi_ot",
 ) -> pd.DataFrame:
-    data = pd.read_csv(data_file, header=0)
+    """
+    Function to produce dependent samples. It is based on the independent samples from
+    either quasi-OT design, or radical design
+    :param k: number of parameters
+    :param ind_sample_file_path: file path of the generated independent samples
+    :param corr_coef: a vector of correlation coefficients. For instance for a correlation
+                    matrix of 3 variables, the vector is [corr(x1,x2), corr(x1,x3), corr(x2,x3)]
+    :param dist_type: type of the original distribution
+    :param a: lower boundary of a uniform distribution (only needed when
+                the original distribution is uniform)
+    :param b: upper boundary of a uniform distribution (only needed when
+                the original distribution is uniform)
+    :param design: design of the independent random sample generation. either `quasi_ot`
+        or `radical`
+    :return: a dataframe of dependent samples. Its shape is [k(k+1)r, k]
+    """
+    data = pd.read_csv(ind_sample_file_path, header=0)
     col_names = data.columns
-    r = len(data) // (k + 1)
     data = data.replace(0, 1e-6)
     data = data.replace(1, 1 - 1e-6)
 
     # construct the correlation matrix
     C = np.triu(np.ones(k))
-    C[(C - np.eye(k)) == 1] = corrcoef
-    C[np.tril_indices_from(C, k=-1)] = corrcoef
+    C[(C - np.eye(k)) == 1] = corr_coef
+    C[np.tril_indices_from(C, k=-1)] = corr_coef
 
     U = []
     for i in range(k):
@@ -51,60 +79,60 @@ def generate_dependent_sample(
         U.append(np.linalg.cholesky(C).T)
 
     Z_indep = sp.stats.norm.ppf(data.values)
-    Out_Z_cor = []
+    Z_dep = []
     if design == "quasi_ot":
-        index = np.ones((2 * k + 2), dtype=int)
-        index[1::2] = np.arange(k + 1)
-        index[0::2] = np.arange(k + 1)
-        index = index[1:-1]
+        filter = np.ones((2 * k + 2), dtype=int)
+        filter[1::2] = np.arange(k + 1)
+        filter[0::2] = np.arange(k + 1)
+        filter = filter[1:-1]
     elif design == "radical":
-        index = np.ones(2 * k, dtype=int)
-        index[0::2] = 0
-        index[1::2] = index[1::2].cumsum()
+        filter = np.ones(2 * k, dtype=int)
+        filter[0::2] = 0
+        filter[1::2] = filter[1::2].cumsum()
+    else:
+        raise NotImplementedError(f"Design {design} is not implemented.")
 
-    for temp_Z_indep in Z_indep.reshape(-1, k + 1, k):
-        temp_Z_indep = temp_Z_indep[index, :]
-        out_temp_Z_dep = []
-        out_temp_Z_dep_total = []
+    for Z in Z_indep.reshape(-1, k + 1, k):
+        Z = Z[filter, :]
+        Z_dep_ind = []  # correlated samples for computing ind EE
+        Z_dep_full = []  # correlated samples for computing full EE
         for j in range(k):
 
-            cc = (
-                np.argwhere(temp_Z_indep[2 * j + 1, :] - temp_Z_indep[2 * j, :])[0][0]
+            col_index = (
+                np.argwhere(Z[2 * j + 1, :] - Z[2 * j, :])[0][0]
                 if design == "quasi_ot"
                 else j
             )
-            if cc == k - 1:
-                if len(out_temp_Z_dep) == 0:
-                    out_temp_Z_dep = temp_Z_indep[2 * j : 2 * j + 2, :].dot(U[0])
+            if col_index == k - 1:
+                if len(Z_dep_ind) == 0:
+                    Z_dep_ind = Z[2 * j : 2 * j + 2, :].dot(U[0])
                 else:
-                    out_temp_Z_dep = np.concatenate(
-                        (out_temp_Z_dep, temp_Z_indep[2 * j : 2 * j + 2, :].dot(U[0]))
+                    Z_dep_ind = np.concatenate(
+                        (Z_dep_ind, Z[2 * j : 2 * j + 2, :].dot(U[0]))
                     )
             else:
-                shuffledtemp = np.roll(
-                    temp_Z_indep[2 * j : 2 * j + 2, :], k - 1 - cc, axis=1
-                ).dot(U[cc + 1])
-                if len(out_temp_Z_dep) == 0:
-                    out_temp_Z_dep = np.roll(shuffledtemp, -k + 1 + cc, axis=1)
+                shuffled_Z = np.roll(
+                    Z[2 * j : 2 * j + 2, :], k - 1 - col_index, axis=1
+                ).dot(U[col_index + 1])
+                if len(Z_dep_ind) == 0:
+                    Z_dep_ind = np.roll(shuffled_Z, -k + 1 + col_index, axis=1)
                 else:
-                    out_temp_Z_dep = np.concatenate(
-                        (out_temp_Z_dep, np.roll(shuffledtemp, -k + 1 + cc, axis=1))
+                    Z_dep_ind = np.concatenate(
+                        (Z_dep_ind, np.roll(shuffled_Z, -k + 1 + col_index, axis=1))
                     )
-            shuffledtemp = np.roll(temp_Z_indep[2 * j : 2 * j + 2, :], -cc, axis=1).dot(
-                U[cc]
+            shuffled_Z = np.roll(Z[2 * j : 2 * j + 2, :], -col_index, axis=1).dot(
+                U[col_index]
             )
-            if len(out_temp_Z_dep_total) == 0:
-                out_temp_Z_dep_total = np.roll(shuffledtemp, cc, axis=1)
+            if len(Z_dep_full) == 0:
+                Z_dep_full = np.roll(shuffled_Z, col_index, axis=1)
             else:
-                out_temp_Z_dep_total = np.concatenate(
-                    (out_temp_Z_dep_total, np.roll(shuffledtemp, cc, axis=1))
+                Z_dep_full = np.concatenate(
+                    (Z_dep_full, np.roll(shuffled_Z, col_index, axis=1))
                 )
-        if len(Out_Z_cor) == 0:
-            Out_Z_cor = np.concatenate((out_temp_Z_dep, out_temp_Z_dep_total))
+        if len(Z_dep) == 0:
+            Z_dep = np.concatenate((Z_dep_ind, Z_dep_full))
         else:
-            Out_Z_cor = np.concatenate(
-                (Out_Z_cor, out_temp_Z_dep, out_temp_Z_dep_total)
-            )
-    Out_Z_cor_ori = original_dist(Out_Z_cor, type, a, b)
-    df_out = pd.DataFrame(Out_Z_cor_ori, columns=col_names)
+            Z_dep = np.concatenate((Z_dep, Z_dep_ind, Z_dep_full))
+    samples = original_dist(Z_dep, dist_type, a, b)
+    df_out = pd.DataFrame(samples, columns=col_names)
     return df_out
