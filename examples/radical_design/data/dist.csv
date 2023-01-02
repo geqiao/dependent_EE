@@ -1,0 +1,4 @@
+Parameter,dist_type,a,b
+x1,uniform,0,10
+x2,uniform,0,20
+x3,normal,10,3
