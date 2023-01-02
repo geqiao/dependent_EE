@@ -26,6 +26,6 @@ For the usage please refer to the `examples` folder.
   Reliability Engineering & System Safety, 134, 334–344.
 
 - Ge, Q. and M. Menendez (2021) Exploring the variance contributions of correlated model parameters: A sampling-based approach and its application in traffic simulation models. Applied Mathematical Modelling, Vol. 97, pp. 438-462.
--
+
 - Ge, Q., B. Ciuffo and M. Menendez (2014) An Exploratory Study of Two Efficient Approaches for the Sensitivity Analysis of Computationally Expensive Traffic Simulation Models, IEEE
   Transactions on Intelligent Transportation Systems, 15 (3) 1288–1297.
