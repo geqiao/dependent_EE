@@ -1,60 +1,63 @@
+from typing import List
+
 import numpy as np
 import pandas as pd
 import scipy as sp
 
 
 def original_dist(
-    vector: np.ndarray, dist_type: str, a: np.ndarray, b: np.ndarray
+    vector: np.ndarray, dist_type: List[str], a: np.ndarray, b: np.ndarray
 ) -> np.ndarray:
     """
     Restore a vector from uniform distribution to its original distribution
     :param vector: vector in uniform distribution
-    :param dist_type: type of original distribution
-    :param a: lower boundary of a uniform distribution (only needed when
-                the original distribution is uniform)
-    :param b: upper boundary of a uniform distribution (only needed when
-                the original distribution is uniform)
+    :param dist_type: list of type of original distribution
+    :param a and b: if the distribution is uniform, a is the lower boundary
+        and b is the upper boundary; if the distribution is Gaussian, a is
+        the mean and b is the standard deviation
     :return: a vector in original distribution
     """
-    if dist_type == "normal":
-        if np.prod(a) == 0 and np.prod(b) == 0:
-            vector_ori = vector
+    vector_ori = []
+    for _v, _d, _a, _b in zip(vector.T, dist_type, a, b):
+        if _d == "normal":
+            if _a == 0 and _b == 1:
+                vector_ori.append(_v)
+            else:
+                z_cdf = sp.stats.norm.cdf(_v)
+                z_cdf[z_cdf == 1] = 1 - 1e-6
+                z_cdf[z_cdf == 0] = 1e-6
+                vector_ori.append(sp.stats.norm.ppf(z_cdf, _a, _b))
+        elif _d == "uniform":
+            vector_ori.append(_a + (_b - _a) * sp.stats.norm.cdf(_v))
         else:
-            z_cdf = sp.stats.norm.cdf(vector)
-            z_cdf[z_cdf == 1] = 1 - 1e-6
-            z_cdf[z_cdf == 0] = 1e-6
-            vector_ori = sp.stats.norm.ppf(z_cdf)
-    elif dist_type == "uniform":
-        vector_ori = a + (b - a) * sp.stats.norm.cdf(vector)
-    else:
-        raise NotImplementedError(f"Distribution {dist_type} is not implemented.")
-    return vector_ori
+            raise NotImplementedError(f"Distribution {dist_type} is not implemented.")
+    return np.array(vector_ori).T
 
 
 def generate_dependent_sample(
     k: int,
     ind_sample_file_path: str,
     corr_coef: np.ndarray,
-    dist_type: str,
+    dist_type: List[str],
     a: np.ndarray,
     b: np.ndarray,
     design: str = "quasi_ot",
 ) -> pd.DataFrame:
     """
-    Function to produce dependent samples. It is based on the independent samples from
-    either quasi-OT design, or radical design
-    :param k: number of parameters
-    :param ind_sample_file_path: file path of the generated independent samples
-    :param corr_coef: a vector of correlation coefficients. For instance for a correlation
-                    matrix of 3 variables, the vector is [corr(x1,x2), corr(x1,x3), corr(x2,x3)]
-    :param dist_type: type of the original distribution
-    :param a: lower boundary of a uniform distribution (only needed when
-                the original distribution is uniform)
-    :param b: upper boundary of a uniform distribution (only needed when
-                the original distribution is uniform)
-    :param design: design of the independent random sample generation. either `quasi_ot`
-        or `radical`
-    :return: a dataframe of dependent samples. Its shape is [k(k+1)r, k]
+     Function to produce dependent samples. It is based on the independent samples
+      from either quasi-OT design, or radical design
+     :param k: number of parameters
+     :param ind_sample_file_path: file path of the generated independent samples
+     :param corr_coef: a vector of correlation coefficients. For instance for a
+         correlation matrix of 3 variables, the vector is
+         [corr(x1,x2), corr(x1,x3), corr(x2,x3)]
+     :param dist_type: list of type of the original distribution
+    :param a and b: if the distribution is uniform, a is the lower boundary
+         and b is the upper boundary; if the distribution is Gaussian, a is
+         the mean and b is the standard deviation
+     :param design: design of the independent random sample generation,
+        either `quasi_ot` or `radical`
+     :return: a dataframe of dependent samples. Its shape is [k(k+1)r, k]
     """
     data = pd.read_csv(ind_sample_file_path, header=0)
     col_names = data.columns

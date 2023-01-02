@@ -14,9 +14,9 @@ def compute_ee_cor(
     Compute the EE based on trajectory design
     :param k: number of parameters
     :param ind_sample_file_path: file path of the generated independent samples
-    :param model_result_file_path: file path of the model results. Number of columns equals
-                                to the number of model outputs, while number of rows is the
-                                same as the number of rows in the dependent samples
+    :param model_result_file_path: file path of the model results. Number of
+        columns equals to the number of model outputs, while number of rows
+        is the same as the number of rows in the dependent samples
     :param design: str, either `quasi_ot` or `radical`
     :return: a tuple of independent EE and full EE
     """
@@ -90,6 +90,6 @@ def agg_ee_results(EE_ind: np.ndarray, EE_full: np.ndarray) -> Dict[str, float]:
         abs_mean_ind=abs_mean_ind,
         std_ind=std_ind,
         mean_full=norm_mean_full,
-        abs_mean_ful=abs_mean_full,
+        abs_mean_full=abs_mean_full,
         std_full=std_full,
     )

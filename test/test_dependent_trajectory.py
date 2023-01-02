@@ -3,8 +3,8 @@ from tempfile import NamedTemporaryFile
 import numpy as np
 import pandas as pd
 import pytest
-from dependent_sampling import generate_dependent_sample
-from independent_sampling import (
+from src.dependent_sampling import generate_dependent_sample
+from src.independent_sampling import (
     ind_sample_from_quasi_OT,
     ind_sample_from_radical_design,
 )
@@ -39,7 +39,7 @@ def test_dependent_sample_quasi_ot(data):
         result = generate_dependent_sample(
             k=k,
             ind_sample_file_path=ind_sample_file_path,
-            dist_type="uniform",
+            dist_type=["uniform"] * 3,
             corr_coef=np.array([0.1, 0.2, 0.3]),
             a=np.array([-np.pi, -np.pi, -np.pi]),
             b=np.array([np.pi, np.pi, np.pi]),
@@ -64,7 +64,7 @@ def test_dependent_sample_radical(data):
         result = generate_dependent_sample(
             k=k,
             ind_sample_file_path=ind_sample_file_path,
-            dist_type="normal",
+            dist_type=["normal"] * 3,
             corr_coef=np.array([0.9, 0.4, 0.01]),
             a=np.array([0, 0, 0]),
             b=np.array([1, 1, 1]),

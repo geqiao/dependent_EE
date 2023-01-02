@@ -66,11 +66,12 @@ def ind_sample_from_quasi_OT(
         )
 
         if k > 10:
-            # when k is large (e.g. > 100), it is very likely the randomly generated
-            # trajectory contains invalid point (i.e. has value outside the range [0,1])
-            # and hence the trajectory will be discarded. The following code is used
-            # to fine tune the invalid trajectory into valid one so to reduce the
-            # time to generate valid random trajectories
+            # when k is large (e.g. > 100), it is very likely the randomly
+            # generated trajectory contains invalid point (i.e. has value outside
+            # the range [0,1]) and hence the trajectory will be discarded.
+            # The following code is used to fine tune the invalid
+            # trajectory into valid one so to reduce the time
+            # to generate valid random trajectories
 
             for cp in np.nditer(np.arange(p / 2)):
                 B_Star[B_Star == (cp - 0.5 * p) / (p - 1)] = (cp + 0.5 * p) / (p - 1)

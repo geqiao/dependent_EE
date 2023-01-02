@@ -3,7 +3,7 @@ from tempfile import NamedTemporaryFile
 import numpy as np
 import pandas as pd
 import pytest
-from independent_sampling import (
+from src.independent_sampling import (
     ind_sample_from_quasi_OT,
     ind_sample_from_radical_design,
 )
